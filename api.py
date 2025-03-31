@@ -2,8 +2,11 @@ import os
 from flask import Flask, request, jsonify
 from supabase import create_client
 from PriceAnalyzer import PriceAnalyzer  # Import the PriceAnalyzer class
+from flask_cors import CORS
+
 
 app = Flask(__name__)
+CORS(app) 
 
 # Supabase configuration
 SUPABASE_URL = "https://tqjfhsjfcmdphvemqrnr.supabase.co"
@@ -14,95 +17,102 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 analyzer = PriceAnalyzer()
 
 
+# Endpoint to predict fair price
 @app.route('/api/predict-fair-price', methods=['POST'])
 def predict_fair_price():
-    data = request.json
     try:
-        result = analyzer.predict_fair_price(
-            data['category'],
-            data['location'],
-            data['area_sqm'],
-            data['complexity_score'],
-            data['material_quality_score']
-        )
-        return jsonify({"predicted_price": result}), 200
+        # Parse request body
+        data = request.json
+        category = data.get("category")
+        location = data.get("location")
+        area_sqm = data.get("area_sqm")
+        complexity_score = data.get("complexity_score")
+        material_quality_score = data.get("material_quality_score")
+
+        # Validate required fields
+        if not all([category, location, area_sqm, complexity_score, material_quality_score]):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Call the predict_fair_price method from PriceAnalyzer
+        fair_price = analyzer.predict_fair_price(category, location, area_sqm, complexity_score, material_quality_score)
+        return jsonify({"predicted_fair_price": fair_price}), 200
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
 
+# Endpoint to get market rates
 @app.route('/api/get-market-rates', methods=['POST'])
 def get_market_rates():
-    data = request.json
     try:
-        result = analyzer.get_market_rates(data['category'], data['location'])
-        return jsonify(result), 200
+        # Parse request body
+        data = request.json
+        category = data.get("category")
+        location = data.get("location")
+
+        # Validate required fields
+        if not all([category, location]):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Call the get_market_rates method from PriceAnalyzer
+        market_rates = analyzer.get_market_rates(category, location)
+        return jsonify(market_rates), 200
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
 
+# Endpoint to evaluate disputes
 @app.route('/api/evaluate-dispute', methods=['POST'])
 def evaluate_dispute():
-    data = request.json
     try:
-        result = analyzer.evaluate_dispute(
-            data['category'],
-            data['location'],
-            data['area_sqm'],
-            data['complexity_score'],
-            data['material_quality_score'],
-            data['contractor_price'],
-            data.get('client_expectation')
+        # Parse request body
+        data = request.json
+        category = data.get("category")
+        location = data.get("location")
+        area_sqm = data.get("area_sqm")
+        complexity_score = data.get("complexity_score")
+        material_quality_score = data.get("material_quality_score")
+        contractor_price = data.get("contractor_price")
+        client_expectation = data.get("client_expectation")
+
+        # Validate required fields
+        if not all([category, location, area_sqm, complexity_score, material_quality_score, contractor_price]):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Call the evaluate_dispute method from PriceAnalyzer
+        dispute_result = analyzer.evaluate_dispute(
+            category, location, area_sqm, complexity_score, material_quality_score, contractor_price, client_expectation
         )
-        return jsonify(result), 200
+        return jsonify(dispute_result), 200
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
 
+# Endpoint to analyze regional pricing
 @app.route('/api/analyze-regional-pricing', methods=['POST'])
 def analyze_regional_pricing():
-    data = request.json
     try:
-        result = analyzer.analyze_regional_pricing(
-            data['category'],
-            data['area_sqm'],
-            data['complexity_score'],
-            data['material_quality_score']
-        )
-        return jsonify(result), 200
+        # Parse request body
+        data = request.json
+        category = data.get("category")
+        area_sqm = data.get("area_sqm")
+        complexity_score = data.get("complexity_score")
+        material_quality_score = data.get("material_quality_score")
+
+        # Validate required fields
+        if not all([category, area_sqm, complexity_score, material_quality_score]):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Call the analyze_regional_pricing method from PriceAnalyzer
+        regional_analysis = analyzer.analyze_regional_pricing(category, area_sqm, complexity_score, material_quality_score)
+        return jsonify(regional_analysis), 200
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/save-training-data', methods=['POST'])
-def save_training_data():
-    try:
-        # Generate synthetic training data
-        df = analyzer.generate_training_data(size=1000)
-
-        # Save to Supabase
-        data = df.to_dict(orient='records')
-        response = supabase.table('training_data').insert(data).execute()
-
-        if response:
-            return jsonify({"message": "Training data saved successfully"}), 200
-        else:
-            return jsonify({"error": "Failed to save training data"}), 500
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/load-training-data', methods=['GET'])
-def load_training_data():
-    try:
-        # Fetch training data from Supabase
-        response = supabase.table('training_data').select('*').execute()
-        if response.data:
-            return jsonify(response.data), 200
-        else:
-            return jsonify({"error": "No training data found"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-
-if __name__ == '__main__':
+# Run the Flask app
+if __name__ == "__main__":
     app.run(debug=True)
