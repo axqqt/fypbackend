@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-py"
+}
+
+datasource db {
+  provider = "sqlite" // or "postgresql", "mysql", etc.
+  url      = env("DATABASE_URL")
+}
+
+model Dispute {
+  id                  Int      @id @default(autoincrement())
+  title               String
+  category            String
+  location            String
+  description         String
+  disputeAmount       Float
+  expectedResolution  String
+  otherPartyName      String
+  otherPartyContact   String
+  disputeDate         DateTime
+  status              String
+  userId              String
+  evidence            Evidence[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Evidence {
+  id         Int      @id @default(autoincrement())
+  filePath   String
+  fileName   String
+  fileType   String
+  fileSize   Int
+  disputeId  Int
+  dispute    Dispute  @relation(fields: [disputeId], references: [id])
+}
