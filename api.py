@@ -1,9 +1,12 @@
 import pandas as pd
 from flask import Flask, request, jsonify
-from PriceAnalyzer import PriceAnalyzer  # Import the PriceAnalyzer class
 from flask_cors import CORS
 import uuid
 from datetime import datetime
+
+# Assuming PriceAnalyzer is a custom class you have defined elsewhere
+# Import the PriceAnalyzer class from its module
+from PriceAnalyzer import PriceAnalyzer
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -11,16 +14,13 @@ CORS(app)  # Enable CORS for all routes
 # Initialize PriceAnalyzer
 analyzer = PriceAnalyzer()
 
-# In-memory job storage (replace with database in production)
+# In-memory storage for jobs and applications (replace with database in production)
 jobs = {}
 applications = {}
 
 # User types
 USER_TYPE_CONTRACTOR = "contractor"
 USER_TYPE_TRADESMAN = "tradesman"
-
-# Existing routes...
-# (keeping all existing routes from the original code)
 
 @app.route('/api/create-job', methods=['POST'])
 def create_job():
@@ -105,10 +105,8 @@ def list_jobs():
         # Apply filters
         if category:
             job_list = [job for job in job_list if job['category'] == category]
-        
         if location:
             job_list = [job for job in job_list if job['location'] == location]
-        
         if status:
             job_list = [job for job in job_list if job['status'] == status]
         
@@ -117,7 +115,7 @@ def list_jobs():
             if user_type == USER_TYPE_CONTRACTOR:
                 job_list = [job for job in job_list if job['contractor_id'] == user_id]
             elif user_type == USER_TYPE_TRADESMAN:
-                # For tradesmen, we don't filter jobs, they can see all open jobs
+                # For tradesmen, they can see all open jobs
                 pass
         
         # Sort by creation date (newest first)
@@ -139,9 +137,7 @@ def get_job(job_id):
     try:
         if job_id not in jobs:
             return jsonify({"error": "Job not found"}), 404
-            
         return jsonify(jobs[job_id]), 200
-        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -154,7 +150,7 @@ def update_job(job_id):
     try:
         if job_id not in jobs:
             return jsonify({"error": "Job not found"}), 404
-            
+        
         data = request.json
         
         # Fields that cannot be updated
@@ -164,7 +160,7 @@ def update_job(job_id):
         for key, value in data.items():
             if key not in protected_fields:
                 jobs[job_id][key] = value
-                
+        
         # If critical parameters changed, update fair price estimate
         if any(key in data for key in ['category', 'location', 'area_sqm', 'complexity_score', 'material_quality_score']):
             fair_price = analyzer.predict_fair_price(
@@ -175,7 +171,7 @@ def update_job(job_id):
                 material_quality_score=jobs[job_id]['material_quality_score']
             )
             jobs[job_id]['fair_price_estimate'] = round(fair_price, 2)
-            
+        
         return jsonify({
             "message": "Job updated successfully",
             "job": jobs[job_id]
@@ -193,10 +189,10 @@ def apply_for_job(job_id):
     try:
         if job_id not in jobs:
             return jsonify({"error": "Job not found"}), 404
-            
+        
         if jobs[job_id]['status'] != 'open':
             return jsonify({"error": "This job is not open for applications"}), 400
-            
+        
         data = request.json
         
         # Validate required fields
@@ -204,7 +200,7 @@ def apply_for_job(job_id):
         for field in required_fields:
             if field not in data:
                 return jsonify({"error": f"Missing required field: {field}"}), 400
-                
+        
         # Generate application ID
         application_id = str(uuid.uuid4())
         
@@ -229,7 +225,6 @@ def apply_for_job(job_id):
         fair_price = jobs[job_id]['fair_price_estimate']
         price_difference = ((data['price_quote'] - fair_price) / fair_price) * 100
         price_assessment = ""
-        
         if price_difference <= -15:
             price_assessment = "significantly below market rate"
         elif -15 < price_difference <= -5:
@@ -240,7 +235,7 @@ def apply_for_job(job_id):
             price_assessment = "above market rate"
         else:
             price_assessment = "significantly above market rate"
-            
+        
         return jsonify({
             "message": "Application submitted successfully",
             "application_id": application_id,
@@ -260,7 +255,7 @@ def list_job_applications(job_id):
     try:
         if job_id not in jobs:
             return jsonify({"error": "Job not found"}), 404
-            
+        
         # Get application IDs for the job
         application_ids = jobs[job_id]['applications']
         
@@ -287,12 +282,12 @@ def update_application_status(application_id):
     try:
         if application_id not in applications:
             return jsonify({"error": "Application not found"}), 404
-            
+        
         data = request.json
         
         if 'status' not in data or data['status'] not in ['accepted', 'rejected']:
             return jsonify({"error": "Invalid status. Must be 'accepted' or 'rejected'"}), 400
-            
+        
         # Update application status
         applications[application_id]['status'] = data['status']
         
@@ -305,7 +300,7 @@ def update_application_status(application_id):
             for app_id in jobs[job_id]['applications']:
                 if app_id != application_id and applications[app_id]['status'] == 'pending':
                     applications[app_id]['status'] = 'rejected'
-                    
+        
         return jsonify({
             "message": f"Application {data['status']} successfully",
             "application": applications[application_id]
