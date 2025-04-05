@@ -296,12 +296,8 @@ def update_job(job_id):
 # Endpoint: Submit an application for a job
 
 
-@app.route('/api/jobs', methods=['GET'])
+@app.route('/api/jobs', methods=['GET'], endpoint='list_jobs_endpoint')
 def list_jobs():
-    """
-    List all jobs with optional filtering.
-    Supports query parameters for 'category', 'location', 'status', and 'user_id'.
-    """
     try:
         # Get query parameters for filtering
         category = request.args.get('category')
@@ -309,10 +305,10 @@ def list_jobs():
         status = request.args.get('status', 'open')  # Default to open jobs
         user_id = request.args.get('user_id')
         user_type = request.args.get('user_type')
-
+        
         # Convert jobs dictionary to list
         job_list = list(jobs.values())
-
+        
         # Apply filters
         if category:
             job_list = [job for job in job_list if job['category'] == category]
@@ -320,27 +316,24 @@ def list_jobs():
             job_list = [job for job in job_list if job['location'] == location]
         if status:
             job_list = [job for job in job_list if job['status'] == status]
-
+        
         # Filter by user if user_id and user_type are provided
         if user_id and user_type:
             if user_type == USER_TYPE_CONTRACTOR:
-                job_list = [
-                    job for job in job_list if job['contractor_id'] == user_id]
+                job_list = [job for job in job_list if job['contractor_id'] == user_id]
             elif user_type == USER_TYPE_TRADESMAN:
                 # For tradesmen, they can see all open jobs
                 pass
-
+        
         # Sort by creation date (newest first)
-        job_list.sort(key=lambda x: datetime.fromisoformat(
-            x['created_at']), reverse=True)
-
+        job_list.sort(key=lambda x: datetime.fromisoformat(x['created_at']), reverse=True)
+        
         return jsonify({
             "jobs": job_list,
             "count": len(job_list)
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 # Endpoint: List all applications for a specific job
 
 
