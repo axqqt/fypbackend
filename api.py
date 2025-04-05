@@ -298,6 +298,10 @@ def update_job(job_id):
 
 @app.route('/api/jobs', methods=['GET'], endpoint='list_jobs_endpoint')
 def list_jobs():
+    """
+    List all jobs with optional filtering.
+    Supports query parameters for 'category', 'location', 'status', and 'user_id'.
+    """
     try:
         # Get query parameters for filtering
         category = request.args.get('category')
