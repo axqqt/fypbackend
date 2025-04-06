@@ -243,10 +243,11 @@ def list_jobs():
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: Get details for a specific job
-@app.route('/api/jobs/<job_id>', methods=['GET'])
-def get_job(job_id):
+@app.route('/api/jobs/<jobId>', methods=['GET'])
+def get_job(jobId):
     try:
-        job = Job.query.get(job_id)
+        print(f"Fetching job with ID: {jobId}")
+        job = Job.query.get(jobId)
         if not job:
             return jsonify({"error": "Job not found"}), 404
         return jsonify({
