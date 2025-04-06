@@ -126,7 +126,7 @@ def login():
         if not user:
             return jsonify({"error": "Invalid username or password"}), 401
         # Verify password
-        if not verify_password(user['password'], data['password']):
+        if not verify_password(user['password'].encode(), data['password']):
             return jsonify({"error": "Invalid username or password"}), 401
         return jsonify({
             "message": "Login successful",
@@ -141,8 +141,8 @@ def login():
 def create_job():
     """
     Create a new job listing.
-    Expects JSON input with job details including 'title', 'category', 'location', 
-    'description', 'area_sqm', 'complexity_score', 'material_quality_score', 
+    Expects JSON input with job details including 'title', 'category', 'location',
+    'description', 'area_sqm', 'complexity_score', 'material_quality_score',
     'budget', 'deadline', and 'contractor_id'.
     """
     try:
@@ -162,9 +162,11 @@ def create_job():
         fair_price = analyzer.predict_fair_price(
             category=data['category'],
             location=data['location'],
-            area_sqm=data['area_sqm'],
-            complexity_score=data['complexity_score'],
-            material_quality_score=data['material_quality_score']
+            area_sqm=float(data['area_sqm']),  # Convert to float
+            complexity_score=float(
+                data['complexity_score']),  # Convert to float
+            material_quality_score=float(
+                data['material_quality_score'])  # Convert to float
         )
 
         # Create job object
@@ -309,10 +311,10 @@ def list_jobs():
         status = request.args.get('status', 'open')  # Default to open jobs
         user_id = request.args.get('user_id')
         user_type = request.args.get('user_type')
-        
+
         # Convert jobs dictionary to list
         job_list = list(jobs.values())
-        
+
         # Apply filters
         if category:
             job_list = [job for job in job_list if job['category'] == category]
@@ -320,18 +322,20 @@ def list_jobs():
             job_list = [job for job in job_list if job['location'] == location]
         if status:
             job_list = [job for job in job_list if job['status'] == status]
-        
+
         # Filter by user if user_id and user_type are provided
         if user_id and user_type:
             if user_type == USER_TYPE_CONTRACTOR:
-                job_list = [job for job in job_list if job['contractor_id'] == user_id]
+                job_list = [
+                    job for job in job_list if job['contractor_id'] == user_id]
             elif user_type == USER_TYPE_TRADESMAN:
                 # For tradesmen, they can see all open jobs
                 pass
-        
+
         # Sort by creation date (newest first)
-        job_list.sort(key=lambda x: datetime.fromisoformat(x['created_at']), reverse=True)
-        
+        job_list.sort(key=lambda x: datetime.fromisoformat(
+            x['created_at']), reverse=True)
+
         return jsonify({
             "jobs": job_list,
             "count": len(job_list)
