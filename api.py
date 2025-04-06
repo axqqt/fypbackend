@@ -62,6 +62,10 @@ class Application(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     job_id = db.Column(db.String(36), db.ForeignKey('job.id'), nullable=False)
     tradesman_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=False)
+    price_quote = db.Column(db.Float, nullable=False)  # Added field
+    estimated_days = db.Column(db.Integer, nullable=False)  # Added field
+    cover_letter = db.Column(db.Text)  # Optional field
+    availability_date = db.Column(db.String(50))  # Optional field
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(20), default="pending")
 
@@ -375,6 +379,79 @@ def list_job_applications(job_id):
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+# Endpoint: Submit an application for a job with price quote and estimated days
+@app.route('/api/jobs/<job_id>/applications', methods=['POST'])
+def submit_job_application(job_id):
+    try:
+        # Get job and validate it exists
+        job = Job.query.get(job_id)
+        if not job:
+            return jsonify({"error": "Job not found"}), 404
+            
+        data = request.json
+        # Validate required fields
+        required_fields = ['tradesman_id', 'price_quote', 'estimated_days']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+                
+        # Validate data types
+        if not isinstance(data['price_quote'], (int, float)) or data['price_quote'] <= 0:
+            return jsonify({"error": "Price quote must be a positive number"}), 400
+            
+        if not isinstance(data['estimated_days'], int) or data['estimated_days'] <= 0:
+            return jsonify({"error": "Estimated days must be a positive integer"}), 400
+            
+        # Check if tradesman exists
+        tradesman = User.query.get(data['tradesman_id'])
+        if not tradesman or tradesman.user_type != USER_TYPE_TRADESMAN:
+            return jsonify({"error": "Invalid tradesman"}), 400
+            
+        # Check if tradesman has already applied for this job
+        existing_application = Application.query.filter_by(
+            job_id=job_id,
+            tradesman_id=data['tradesman_id']
+        ).first()
+        
+        if existing_application:
+            return jsonify({"error": "You have already applied for this job"}), 400
+            
+        # Create application object with additional fields
+        new_application = Application(
+            job_id=job_id,
+            tradesman_id=data['tradesman_id'],
+            price_quote=data['price_quote'],
+            estimated_days=data['estimated_days']
+        )
+        
+        # Add optional fields if provided
+        if 'cover_letter' in data:
+            new_application.cover_letter = data['cover_letter']
+            
+        if 'availability_date' in data:
+            new_application.availability_date = data['availability_date']
+            
+        # Save application to database
+        db.session.add(new_application)
+        db.session.commit()
+        
+        return jsonify({
+            "message": "Application submitted successfully",
+            "application_id": new_application.id,
+            "application": {
+                "id": new_application.id,
+                "job_id": new_application.job_id,
+                "tradesman_id": new_application.tradesman_id,
+                "price_quote": new_application.price_quote,
+                "estimated_days": new_application.estimated_days,
+                "created_at": new_application.created_at.isoformat(),
+                "status": new_application.status
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500   
 
 # Endpoint: Update the status of a job application
 @app.route('/api/applications/<application_id>', methods=['PUT'])
