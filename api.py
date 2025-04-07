@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 import uuid
 from datetime import datetime
 import bcrypt
+import requests  # For integrating with Resend API
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -18,6 +19,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # Placeholder PriceAnalyzer class (replace with actual implementation)
+
+
 class PriceAnalyzer:
     def predict_fair_price(self, category, location, area_sqm, complexity_score, material_quality_score):
         # Placeholder logic for fair price estimation
@@ -27,6 +30,7 @@ class PriceAnalyzer:
         location_factor = 1.0  # Adjust based on location
         return base_price + complexity_factor + material_quality_score + location_factor
 
+
 # Initialize PriceAnalyzer
 analyzer = PriceAnalyzer()
 
@@ -35,14 +39,19 @@ USER_TYPE_CONTRACTOR = "contractor"
 USER_TYPE_TRADESMAN = "tradesman"
 
 # Database Models
+
+
 class User(db.Model):
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.String(36), primary_key=True,
+                   default=lambda: str(uuid.uuid4()))
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(128), nullable=False)
     user_type = db.Column(db.String(20), nullable=False)
 
+
 class Job(db.Model):
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.String(36), primary_key=True,
+                   default=lambda: str(uuid.uuid4()))
     title = db.Column(db.String(200), nullable=False)
     category = db.Column(db.String(100), nullable=False)
     location = db.Column(db.String(100), nullable=False)
@@ -52,16 +61,20 @@ class Job(db.Model):
     material_quality_score = db.Column(db.Float, nullable=False)
     budget = db.Column(db.Float, nullable=False)
     deadline = db.Column(db.String(50), nullable=False)
-    contractor_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=False)
+    contractor_id = db.Column(
+        db.String(36), db.ForeignKey('user.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(20), default="open")
     fair_price_estimate = db.Column(db.Float, nullable=False)
     applications = db.relationship('Application', backref='job', lazy=True)
 
+
 class Application(db.Model):
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.String(36), primary_key=True,
+                   default=lambda: str(uuid.uuid4()))
     job_id = db.Column(db.String(36), db.ForeignKey('job.id'), nullable=False)
-    tradesman_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=False)
+    tradesman_id = db.Column(
+        db.String(36), db.ForeignKey('user.id'), nullable=False)
     price_quote = db.Column(db.Float, nullable=False)  # Added field
     estimated_days = db.Column(db.Integer, nullable=False)  # Added field
     cover_letter = db.Column(db.Text)  # Optional field
@@ -70,12 +83,17 @@ class Application(db.Model):
     status = db.Column(db.String(20), default="pending")
 
 # Helper function to hash passwords
+
+
 def hash_password(password):
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
 # Helper function to verify passwords
+
+
 def verify_password(stored_password, provided_password):
     return bcrypt.checkpw(provided_password.encode('utf-8'), stored_password.encode('utf-8'))
+
 
 @app.route('/api/contractors/<contractor_id>/tasks', methods=['GET'])
 def get_contractor_tasks(contractor_id):
@@ -84,16 +102,17 @@ def get_contractor_tasks(contractor_id):
         contractor = User.query.get(contractor_id)
         if not contractor or contractor.user_type != USER_TYPE_CONTRACTOR:
             return jsonify({"error": "Invalid contractor"}), 400
-            
+
         # Get all jobs posted by this contractor
         jobs = Job.query.filter_by(contractor_id=contractor_id).all()
-        
+
         # Prepare response data
         tasks = []
         for job in jobs:
             # Find the accepted application for this job (if any)
-            accepted_app = Application.query.filter_by(job_id=job.id, status='accepted').first()
-            
+            accepted_app = Application.query.filter_by(
+                job_id=job.id, status='accepted').first()
+
             task_data = {
                 "id": job.id,
                 "title": job.title,
@@ -108,20 +127,22 @@ def get_contractor_tasks(contractor_id):
                 "status": job.status,
                 "created_at": job.created_at.isoformat()
             }
-            
+
             if accepted_app:
                 task_data["tradesman_id"] = accepted_app.tradesman_id
                 task_data["price_quote"] = accepted_app.price_quote
                 task_data["estimated_days"] = accepted_app.estimated_days
-                
+
             tasks.append(task_data)
-            
+
         return jsonify({"tasks": tasks}), 200
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: Get tasks for a tradesman (jobs they've been assigned to)
+
+
 @app.route('/api/tradesman/<tradesman_id>/tasks', methods=['GET'])
 def get_tradesman_tasks(tradesman_id):
     try:
@@ -129,13 +150,13 @@ def get_tradesman_tasks(tradesman_id):
         tradesman = User.query.get(tradesman_id)
         if not tradesman or tradesman.user_type != USER_TYPE_TRADESMAN:
             return jsonify({"error": "Invalid tradesman"}), 400
-            
+
         # Get all accepted applications for this tradesman
         applications = Application.query.filter_by(
-            tradesman_id=tradesman_id, 
+            tradesman_id=tradesman_id,
             status='accepted'
         ).all()
-        
+
         # Prepare response data
         tasks = []
         for app in applications:
@@ -157,128 +178,138 @@ def get_tradesman_tasks(tradesman_id):
                     "price_quote": app.price_quote,
                     "estimated_days": app.estimated_days
                 })
-                
+
         return jsonify({"tasks": tasks}), 200
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: Update job status
+
+
 @app.route('/api/jobs/<job_id>/status', methods=['PUT'])
 def update_job_status(job_id):
     try:
         job = Job.query.get(job_id)
         if not job:
             return jsonify({"error": "Job not found"}), 404
-            
+
         data = request.json
         if 'status' not in data or data['status'] not in ['ongoing', 'dispute', 'completed']:
             return jsonify({"error": "Invalid status. Must be 'ongoing', 'dispute', or 'completed'"}), 400
-            
+
         # Update job status
         job.status = data['status']
         db.session.commit()
-        
+
         return jsonify({
             "message": f"Job status updated to {data['status']} successfully",
             "job_id": job.id,
             "status": job.status
         }), 200
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: Report a dispute for a job
+
+
 @app.route('/api/jobs/<job_id>/dispute', methods=['POST'])
 def report_job_dispute(job_id):
     try:
         job = Job.query.get(job_id)
         if not job:
             return jsonify({"error": "Job not found"}), 404
-            
+
         data = request.json
         if 'reported_by' not in data or 'reason' not in data:
             return jsonify({"error": "Missing required fields: reported_by, reason"}), 400
-            
+
         # Update job status to dispute
         job.status = 'dispute'
-        
+
         # Here you could add more logic to store dispute details in a separate table
         # For example, create a new DisputeReport model and store the data there
-        
+
         db.session.commit()
-        
+
         return jsonify({
             "message": "Dispute reported successfully",
             "job_id": job.id,
             "status": job.status
         }), 200
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: Resolve a dispute for a job
+
+
 @app.route('/api/jobs/<job_id>/resolve-dispute', methods=['POST'])
 def resolve_job_dispute(job_id):
     try:
         job = Job.query.get(job_id)
         if not job or job.status != 'dispute':
             return jsonify({"error": "Job not found or not in dispute status"}), 404
-            
+
         data = request.json
         if 'resolution' not in data or 'resolved_by' not in data:
             return jsonify({"error": "Missing required fields: resolution, resolved_by"}), 400
-            
+
         # Update job status back to ongoing
         job.status = 'ongoing'
-        
+
         # Here you could add more logic to store resolution details
-        
+
         db.session.commit()
-        
+
         return jsonify({
             "message": "Dispute resolved successfully",
             "job_id": job.id,
             "status": job.status
         }), 200
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: Mark a job as completed
+
+
 @app.route('/api/jobs/<job_id>/complete', methods=['POST'])
 def complete_job(job_id):
     try:
         job = Job.query.get(job_id)
         if not job or job.status not in ['ongoing', 'assigned']:
             return jsonify({"error": "Job not found or not in appropriate status"}), 404
-            
+
         data = request.json
         if 'completed_by' not in data:
             return jsonify({"error": "Missing required field: completed_by"}), 400
-            
+
         # Update job status to completed
         job.status = 'completed'
-        
+
         # Here you could add more logic like recording completion date,
         # final payment details, etc.
-        
+
         db.session.commit()
-        
+
         return jsonify({
             "message": "Job marked as completed successfully",
             "job_id": job.id,
             "status": job.status
         }), 200
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: Register a new user
+
+
 @app.route('/api/register', methods=['POST'])
 def register():
     try:
@@ -318,6 +349,8 @@ def register():
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
 # Endpoint: Login a user
+
+
 @app.route('/api/login', methods=['POST'])
 def login():
     try:
@@ -340,6 +373,8 @@ def login():
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
 # Endpoint: Create a new job listing
+
+
 @app.route('/api/create-job', methods=['POST'])
 def create_job():
     try:
@@ -401,6 +436,8 @@ def create_job():
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: List jobs with optional filtering
+
+
 @app.route('/api/jobs', methods=['GET'])
 def list_jobs():
     try:
@@ -448,6 +485,8 @@ def list_jobs():
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: Get details for a specific job
+
+
 @app.route('/api/jobs/<jobId>', methods=['GET'])
 def get_job(jobId):
     try:
@@ -475,6 +514,8 @@ def get_job(jobId):
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: Update a job listing
+
+
 @app.route('/api/jobs/<job_id>', methods=['PUT'])
 def update_job(job_id):
     try:
@@ -524,6 +565,8 @@ def update_job(job_id):
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: Submit an application for a job
+
+
 @app.route('/api/submit-application', methods=['POST'])
 def submit_application():
     try:
@@ -557,7 +600,67 @@ def submit_application():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/send-dispute-report', methods=['POST'])
+def send_dispute_report():
+    try:
+        data = request.json
+
+        # Validate required fields
+        required_fields = ['phoneNumber', 'jobTitle',
+                           'jobLocation', 'issueDate', 'additionalNotes']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+
+        # Extract data
+        phone_number = data['phoneNumber']
+        job_title = data['jobTitle']
+        job_location = data['jobLocation']
+        issue_date = data['issueDate']
+        additional_notes = data['additionalNotes']
+
+        # Construct email content
+        email_subject = "Dispute Report"
+        email_to = "recipient@example.com"  # Replace with the recipient's email address
+        email_from = "your-email@example.com"  # Replace with your verified sender email
+        email_body = (
+            f"Dispute Report:\n\n"
+            f"Job Title: {job_title}\n"
+            f"Location: {job_location}\n"
+            f"Issue Date: {issue_date}\n"
+            f"Phone Number: {phone_number}\n"
+            f"Additional Notes: {additional_notes}"
+        )
+
+        # Send email using Resend API
+        resend_api_key = "your_resend_api_key"  # Replace with your Resend API key
+        headers = {
+            "Authorization": f"Bearer {resend_api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "from": email_from,
+            "to": email_to,
+            "subject": email_subject,
+            "text": email_body
+        }
+
+        response = requests.post(
+            "https://api.resend.com/emails", json=payload, headers=headers)
+
+        # Check if the email was sent successfully
+        if response.status_code == 200:
+            return jsonify({"message": "Dispute report sent successfully!"}), 200
+        else:
+            return jsonify({"error": "Failed to send dispute report via email."}), 500
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # Endpoint: List all applications for a specific job
+
+
 @app.route('/api/jobs/<job_id>/applications', methods=['GET'])
 def list_job_applications(job_id):
     try:
@@ -565,7 +668,8 @@ def list_job_applications(job_id):
         if not job:
             return jsonify({"error": "Job not found"}), 404
         # Get applications for the job
-        applications_list = Application.query.filter_by(job_id=job_id).order_by(Application.created_at.desc()).all()
+        applications_list = Application.query.filter_by(
+            job_id=job_id).order_by(Application.created_at.desc()).all()
         # Serialize applications
         serialized_applications = [{
             "id": app.id,
@@ -580,8 +684,10 @@ def list_job_applications(job_id):
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+
 # Endpoint: Submit an application for a job with price quote and estimated days
+
+
 @app.route('/api/jobs/<job_id>/applications', methods=['POST'])
 def submit_job_application(job_id):
     try:
@@ -589,35 +695,35 @@ def submit_job_application(job_id):
         job = Job.query.get(job_id)
         if not job:
             return jsonify({"error": "Job not found"}), 404
-            
+
         data = request.json
         # Validate required fields
         required_fields = ['tradesman_id', 'price_quote', 'estimated_days']
         for field in required_fields:
             if field not in data:
                 return jsonify({"error": f"Missing required field: {field}"}), 400
-                
+
         # Validate data types
         if not isinstance(data['price_quote'], (int, float)) or data['price_quote'] <= 0:
             return jsonify({"error": "Price quote must be a positive number"}), 400
-            
+
         if not isinstance(data['estimated_days'], int) or data['estimated_days'] <= 0:
             return jsonify({"error": "Estimated days must be a positive integer"}), 400
-            
+
         # Check if tradesman exists
         tradesman = User.query.get(data['tradesman_id'])
         if not tradesman or tradesman.user_type != USER_TYPE_TRADESMAN:
             return jsonify({"error": "Invalid tradesman"}), 400
-            
+
         # Check if tradesman has already applied for this job
         existing_application = Application.query.filter_by(
             job_id=job_id,
             tradesman_id=data['tradesman_id']
         ).first()
-        
+
         if existing_application:
             return jsonify({"error": "You have already applied for this job"}), 400
-            
+
         # Create application object with additional fields
         new_application = Application(
             job_id=job_id,
@@ -625,18 +731,18 @@ def submit_job_application(job_id):
             price_quote=data['price_quote'],
             estimated_days=data['estimated_days']
         )
-        
+
         # Add optional fields if provided
         if 'cover_letter' in data:
             new_application.cover_letter = data['cover_letter']
-            
+
         if 'availability_date' in data:
             new_application.availability_date = data['availability_date']
-            
+
         # Save application to database
         db.session.add(new_application)
         db.session.commit()
-        
+
         return jsonify({
             "message": "Application submitted successfully",
             "application_id": new_application.id,
@@ -652,9 +758,11 @@ def submit_job_application(job_id):
         }), 201
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500   
+        return jsonify({"error": str(e)}), 500
 
 # Endpoint: Update the status of a job application
+
+
 @app.route('/api/applications/<application_id>', methods=['PUT'])
 def update_application_status(application_id):
     try:
@@ -672,7 +780,8 @@ def update_application_status(application_id):
             if job:
                 job.status = 'assigned'
                 # Reject all other pending applications for this job
-                pending_apps = Application.query.filter_by(job_id=job.id, status='pending').all()
+                pending_apps = Application.query.filter_by(
+                    job_id=job.id, status='pending').all()
                 for app in pending_apps:
                     app.status = 'rejected'
         # Save changes
@@ -692,11 +801,14 @@ def update_application_status(application_id):
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: List all applications submitted by a specific tradesman
+
+
 @app.route('/api/tradesman/<tradesman_id>/applications', methods=['GET'])
 def list_tradesman_applications(tradesman_id):
     try:
         # Get applications submitted by the tradesman
-        applications_list = Application.query.filter_by(tradesman_id=tradesman_id).order_by(Application.created_at.desc()).all()
+        applications_list = Application.query.filter_by(
+            tradesman_id=tradesman_id).order_by(Application.created_at.desc()).all()
         # Serialize applications
         serialized_applications = []
         for app in applications_list:
@@ -720,6 +832,7 @@ def list_tradesman_applications(tradesman_id):
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 # Run the app
 if __name__ == "__main__":
