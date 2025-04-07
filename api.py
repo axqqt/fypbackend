@@ -154,7 +154,7 @@ def get_tradesman_tasks(tradesman_id):
         # Get all accepted applications for this tradesman
         applications = Application.query.filter_by(
             tradesman_id=tradesman_id,
-            status='accepted'
+            status='approved'
         ).all()
 
         # Prepare response data
