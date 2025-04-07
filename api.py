@@ -775,13 +775,13 @@ def update_application_status(application_id):
         # Update application status
         application.status = data['status']
         # If accepting application, update job status and handle other applications
-        if data['status'] == 'accepted':
+        if data['status'] == 'approved':
             job = Job.query.get(application.job_id)
             if job:
                 job.status = 'assigned'
                 # Reject all other pending applications for this job
                 pending_apps = Application.query.filter_by(
-                    job_id=job.id, status='pending').all()
+                    job_id=job.id, status='applied').all()
                 for app in pending_apps:
                     app.status = 'rejected'
         # Save changes
