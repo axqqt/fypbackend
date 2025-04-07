@@ -64,7 +64,7 @@ class Job(db.Model):
     contractor_id = db.Column(
         db.String(36), db.ForeignKey('user.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    status = db.Column(db.String(20), default="open")
+    status = db.Column(db.String(20), default="pending")
     fair_price_estimate = db.Column(db.Float, nullable=False)
     applications = db.relationship('Application', backref='job', lazy=True)
 
