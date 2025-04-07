@@ -6,6 +6,10 @@ import uuid
 from datetime import datetime
 import bcrypt
 import requests  # For integrating with Resend API
+import logging
+# Assuming you have a PriceAnalyzer class
+from PriceAnalyzer import PriceAnalyzer
+
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -15,20 +19,12 @@ CORS(app)  # Enable CORS for all routes
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///construction_platform.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+logging.basicConfig(level=logging.INFO)
+
 # Initialize SQLAlchemy
 db = SQLAlchemy(app)
 
 # Placeholder PriceAnalyzer class (replace with actual implementation)
-
-
-class PriceAnalyzer:
-    def predict_fair_price(self, category, location, area_sqm, complexity_score, material_quality_score):
-        # Placeholder logic for fair price estimation
-        base_price = 100 * area_sqm
-        complexity_factor = complexity_score * 5
-        material_factor = material_quality_score * 10
-        location_factor = 1.0  # Adjust based on location
-        return base_price + complexity_factor + material_quality_score + location_factor
 
 
 # Initialize PriceAnalyzer
@@ -106,12 +102,21 @@ def get_contractor_tasks(contractor_id):
         # Get all jobs posted by this contractor
         jobs = Job.query.filter_by(contractor_id=contractor_id).all()
 
+        # jobs = Job.query.all()
+        logging.info("jobs =>>")
+        for job in jobs:
+            logging.info(job.contractor_id + " : " + job.id)
+        # print(jobs)
+
         # Prepare response data
         tasks = []
         for job in jobs:
             # Find the accepted application for this job (if any)
+            # accepted_app = Application.query.filter_by(
+            #     job_id=job.id, status='accepted').first()
+
             accepted_app = Application.query.filter_by(
-                job_id=job.id, status='accepted').first()
+                job_id=job.id).first()
 
             task_data = {
                 "id": job.id,
@@ -124,11 +129,14 @@ def get_contractor_tasks(contractor_id):
                 "material_quality_score": job.material_quality_score,
                 "budget": job.budget,
                 "deadline": job.deadline,
-                "status": job.status,
                 "created_at": job.created_at.isoformat()
             }
 
+            # if accepted_app is not None:
+            #     task_data["status"] = accepted_app.status
             if accepted_app:
+                task_data["application_id"] = accepted_app.id
+                task_data["status"] = accepted_app.status
                 task_data["tradesman_id"] = accepted_app.tradesman_id
                 task_data["price_quote"] = accepted_app.price_quote
                 task_data["estimated_days"] = accepted_app.estimated_days
@@ -153,10 +161,9 @@ def get_tradesman_tasks(tradesman_id):
 
         # Get all accepted applications for this tradesman
         applications = Application.query.filter_by(
-            tradesman_id=tradesman_id,
-            status='accepted'
+            tradesman_id=tradesman_id
         ).all()
-
+        logging.info(f"applications: {applications}")
         # Prepare response data
         tasks = []
         for app in applications:
@@ -173,7 +180,7 @@ def get_tradesman_tasks(tradesman_id):
                     "material_quality_score": job.material_quality_score,
                     "budget": job.budget,
                     "deadline": job.deadline,
-                    "status": job.status,
+                    "status": app.status,
                     "created_at": job.created_at.isoformat(),
                     "price_quote": app.price_quote,
                     "estimated_days": app.estimated_days
@@ -379,6 +386,7 @@ def login():
 def create_job():
     try:
         data = request.json
+        print(data)
         # Validate required fields
         required_fields = ['title', 'category', 'location', 'description',
                            'area_sqm', 'complexity_score', 'material_quality_score',
@@ -436,6 +444,43 @@ def create_job():
         return jsonify({"error": str(e)}), 500
 
 # Endpoint: List jobs with optional filtering
+
+
+@app.route('/api/users', methods=['GET'])
+def list_usrs():
+    try:
+
+        user_query = User.query.all()
+
+        serialized_users = [{
+            "id": user.id,
+            "username": user.username,
+            "user_type": user.user_type
+        }for user in user_query]
+        return jsonify({
+            "jobs": serialized_users,
+            "count": len(serialized_users)
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/applications', methods=['GET'])
+def list_applications():
+    try:
+        apps_query = Application.query.all()
+        serialized_apps = [{
+            "id": apps.id,
+            "tradesman_id": apps.tradesman_id,
+            "job_id": apps.job_id,
+            "status": apps.status
+        }for apps in apps_query]
+        return jsonify({
+            "jobs": serialized_apps,
+            "count": len(serialized_apps)
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/jobs', methods=['GET'])
@@ -729,7 +774,8 @@ def submit_job_application(job_id):
             job_id=job_id,
             tradesman_id=data['tradesman_id'],
             price_quote=data['price_quote'],
-            estimated_days=data['estimated_days']
+            estimated_days=data['estimated_days'],
+            status="applied"
         )
 
         # Add optional fields if provided
@@ -765,25 +811,34 @@ def submit_job_application(job_id):
 
 @app.route('/api/applications/<application_id>', methods=['PUT'])
 def update_application_status(application_id):
+
     try:
         application = Application.query.get(application_id)
+
         if not application:
             return jsonify({"error": "Application not found"}), 404
         data = request.json
-        if 'status' not in data or data['status'] not in ['accepted', 'rejected']:
+
+        if 'status' not in data or data['status'] not in ['approved', 'rejected', 'closed', 'dispute']:
             return jsonify({"error": "Invalid status. Must be 'accepted' or 'rejected'"}), 400
         # Update application status
         application.status = data['status']
+        logging.info(f"application.status ===>>: {application.status}")
+
         # If accepting application, update job status and handle other applications
-        if data['status'] == 'accepted':
-            job = Job.query.get(application.job_id)
-            if job:
-                job.status = 'assigned'
-                # Reject all other pending applications for this job
-                pending_apps = Application.query.filter_by(
-                    job_id=job.id, status='pending').all()
-                for app in pending_apps:
-                    app.status = 'rejected'
+        # if data['status'] == 'accepted':
+        #     job = Job.query.get(application.job_id)
+        #     if job:
+        #         job.status = 'assigned'
+        #         # Reject all other pending applications for this job
+        #         pending_apps = Application.query.filter_by(
+        #             job_id=job.id, status='applied').all()
+        #         for app in pending_apps:
+        #             app.status = 'rejected'
+
+        # if data['status'] == 'accepted':
+        #     pending_apps = Application.query.filter_by(id=)
+
         # Save changes
         db.session.commit()
         return jsonify({
